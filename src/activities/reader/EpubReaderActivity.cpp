@@ -523,7 +523,7 @@ void EpubReaderActivity::idlePrewarmTick() {
 }
 
 void EpubReaderActivity::openDictionaryWordSelect() {
-  if (SETTINGS.dictionaryName[0] == '\0') {
+  if (SETTINGS.dictionaryName[0] == '\0' && SETTINGS.secondaryDictionaryName[0] == '\0') {
     pendingLookupSelection = {};
     showDictionaryMessage = true;
     dictionaryMessageTime = millis();

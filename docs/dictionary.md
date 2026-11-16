@@ -23,8 +23,9 @@ Not supported: dictionaries with 64-bit index offsets (`idxoffsetbits=64` in the
 1. Copy your dictionary folder(s) to `/dictionaries/` on the SD card — one dictionary per folder, e.g. `/dictionaries/webster/webster.idx` + `webster.dict.dz`. A hidden `/.dictionaries/` folder (dot-prefixed) works the same way, for keeping it out of the file browser.
 2. Open **Settings → Reader → Dictionary** on the device.
 3. Select a dictionary from the list, or **None** to disable lookups.
+4. Optionally, configure **Settings → Reader → Secondary Dictionary** to query a second dictionary concurrently.
 
-The Dictionary setting only appears when at least one usable dictionary folder exists. Folders containing more than one dictionary (multiple `.idx` stems) are skipped as ambiguous.
+The Dictionary settings only appear when at least one usable dictionary folder exists. Folders containing more than one dictionary (multiple `.idx` stems) are skipped as ambiguous.
 
 ## Looking Up Words and Phrases
 
@@ -66,7 +67,7 @@ Repeated lookups are recorded separately. Positions reflect the reader layout at
 
 ## The Definition Screen
 
-When a word is found, the definition screen shows the matched headword at the top and the definition text below, with a page counter for long definitions. A word that maps to several definitions shows them one after another, each labelled with its headword. Definitions that exceed the remaining size limit are skipped, and later definitions are still considered. If no labelled definition fits, the first definition is shown alone without an extra label.
+When a word is found, the definition screen shows the matched headword at the top and the definition text below, with a page counter for long definitions. When both primary and secondary dictionaries are active and return a definition, each section is labeled with its dictionary folder name in brackets (e.g. `[Oxford]`, `[Webster]`). A word that maps to several definitions shows them one after another, each labelled with its headword. Definitions that exceed the remaining size limit are skipped, and later definitions are still considered. If no labelled definition fits, the first definition is shown alone without an extra label.
 
 HTML dictionaries (`sametypesequence=h`) and XDXF dictionaries (`sametypesequence=x`) use the EPUB text-layout engine for supported formatting such as headings, bold, italics, lists, and line breaks. Unrecognized tags keep their text without special formatting. Images and CSS styling are ignored. Definitions that are too large or cannot be parsed or laid out within the available memory fall back to plain text.
 
@@ -86,7 +87,7 @@ Definitions are drawn in your reading font. Dictionaries may use IPA symbols (e.
 
 During definition word selection, press **Back** to cancel selection first, then hold **Back** or long-press the header Back arrow to leave the lookup chain.
 
-Nested lookups use the same dictionary. Both formatted and plain-text definitions support selection.
+Nested lookups query the active dictionaries. Both formatted and plain-text definitions support selection.
 Returning to a previous definition restores its page and remembers its selection for the next press of **Confirm**.
 
 The reader keeps up to 16 previous definitions. At this limit, another lookup shows a brief message and leaves the current definition open.

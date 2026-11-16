@@ -16,6 +16,115 @@ constexpr unsigned long POPUP_DURATION_MS = 1500;
 
 void indexBuildYield(void*) { vTaskDelay(1); }
 
+void escapeHtmlText(std::string& out, const char* in) {
+  if (!in) return;
+  for (const char* p = in; *p; ++p) {
+    switch (*p) {
+      case '&': out += "&amp;"; break;
+      case '<': out += "&lt;"; break;
+      case '>': out += "&gt;"; break;
+      case '"': out += "&quot;"; break;
+      default: out.push_back(*p); break;
+    }
+  }
+}
+
+void escapePlainTextToHtml(std::string& out, const std::string& in) {
+  for (char c : in) {
+    switch (c) {
+      case '\n': out += "<br/>"; break;
+      case '&': out += "&amp;"; break;
+      case '<': out += "&lt;"; break;
+      case '>': out += "&gt;"; break;
+      case '"': out += "&quot;"; break;
+      default: out.push_back(c); break;
+    }
+  }
+}
+
+void combineDefinitions(const std::string& primDef, const std::string& primHead, bool primHtml,
+                        const char* primName, const std::string& secDef, const std::string& secHead,
+                        bool secHtml, const char* secName, std::string& defOut, std::string& headOut,
+                        bool& htmlOut) {
+  headOut = !primHead.empty() ? primHead : secHead;
+  htmlOut = primHtml || secHtml;
+  defOut.clear();
+  defOut.reserve(primDef.size() + secDef.size() + 256);
+
+  if (htmlOut) {
+    if (primName && primName[0]) {
+      defOut += "<h2>[";
+      escapeHtmlText(defOut, primName);
+      defOut += "]</h2>\n";
+    }
+    if (primHtml) {
+      defOut += primDef;
+    } else {
+      defOut += "<p>";
+      escapePlainTextToHtml(defOut, primDef);
+      defOut += "</p>";
+    }
+
+    defOut += "\n<hr/>\n";
+    if (secName && secName[0]) {
+      defOut += "<h2>[";
+      escapeHtmlText(defOut, secName);
+      defOut += "]</h2>\n";
+    }
+    if (secHtml) {
+      defOut += secDef;
+    } else {
+      defOut += "<p>";
+      escapePlainTextToHtml(defOut, secDef);
+      defOut += "</p>";
+    }
+  } else {
+    if (primName && primName[0]) {
+      defOut.push_back('\x01');
+      defOut += "[";
+      defOut += primName;
+      defOut += "]\n";
+    }
+    defOut += primDef;
+
+    defOut += "\n\n";
+
+    if (secName && secName[0]) {
+      defOut.push_back('\x01');
+      defOut += "[";
+      defOut += secName;
+      defOut += "]\n";
+    }
+    defOut += secDef;
+  }
+}
+
+void formatSingleDefinition(const std::string& def, const std::string& head, bool isHtml,
+                            const char* name, std::string& defOut, std::string& headOut,
+                            bool& htmlOut) {
+  headOut = head;
+  htmlOut = isHtml;
+  defOut.clear();
+  if (name && name[0] != '\0') {
+    if (isHtml) {
+      defOut.reserve(def.size() + 128);
+      defOut += "<h2>[";
+      escapeHtmlText(defOut, name);
+      defOut += "]</h2>\n";
+      defOut += def;
+    } else {
+      defOut.reserve(def.size() + 64);
+      defOut.push_back('\x01');
+      defOut += "[";
+      defOut += name;
+      defOut += "]\n";
+      defOut += def;
+    }
+  } else {
+    defOut = def;
+  }
+}
+
 }  // namespace
 
 void DictionaryWordSelectActivity::onEnter() {
@@ -33,17 +142,28 @@ void DictionaryWordSelectActivity::performLookup() {
     popupMsg = StrId::STR_DICT_LOOKING_UP;
     popup = Popup::Busy;
   }
+  const bool primConfigured = SETTINGS.dictionaryName[0] != '\0';
   if (!dictOpenAttempted) {
     dictOpenAttempted = true;
-    dictOpenOk = dict.open(SETTINGS.dictionaryName);
+    dictOpenOk = primConfigured && dict.open(SETTINGS.dictionaryName);
     // needsIndex() opens and validates the .qidx sidecar, so ask it once per
     // open rather than once per word: the answer only changes when we build
     // the sidecar ourselves, which is handled below.
     dictNeedsIndex = dictOpenOk && dict.needsIndex();
   }
+
+  const bool hasSecondary = SETTINGS.secondaryDictionaryName[0] != '\0' &&
+                            strcmp(SETTINGS.dictionaryName, SETTINGS.secondaryDictionaryName) != 0;
+  if (hasSecondary && !secondaryDictOpenAttempted) {
+    secondaryDictOpenAttempted = true;
+    secondaryDictOpenOk = secondaryDict.open(SETTINGS.secondaryDictionaryName);
+    secondaryDictNeedsIndex = secondaryDictOpenOk && secondaryDict.needsIndex();
+  }
+
   {
     RenderLock lock;
-    popupMsg = dictNeedsIndex ? StrId::STR_DICT_INDEXING : StrId::STR_DICT_LOOKING_UP;
+    const bool needsIndexing = dictNeedsIndex || (hasSecondary && secondaryDictNeedsIndex);
+    popupMsg = needsIndexing ? StrId::STR_DICT_INDEXING : StrId::STR_DICT_LOOKING_UP;
   }
   requestUpdateAndWait();  // paint the page + busy popup before blocking on SD
 
@@ -54,10 +174,42 @@ void DictionaryWordSelectActivity::performLookup() {
     dictNeedsIndex = !ok;  // a successful build leaves the sidecar fresh; a failed one retries
   }
 
-  std::string definition;
-  std::string headword;
-  Dictionary::LookupResult result = Dictionary::LookupResult::NotFound;
-  const bool found = ok && dict.lookup(lookupText.c_str(), definition, headword, &result);
+  bool secOk = hasSecondary && secondaryDictOpenOk;
+  Dictionary::IndexResult secIndexResult = Dictionary::IndexResult::Ok;
+  if (secOk && secondaryDictNeedsIndex) {
+    secOk = secondaryDict.buildIndex(&indexBuildYield, nullptr, &secIndexResult);
+    secondaryDictNeedsIndex = !secOk;
+  }
+
+  std::string primDef, primHead;
+  Dictionary::LookupResult primResult = Dictionary::LookupResult::NotFound;
+  const bool primFound = ok && dict.lookup(lookupText.c_str(), primDef, primHead, &primResult);
+
+  std::string secDef, secHead;
+  Dictionary::LookupResult secResult = Dictionary::LookupResult::NotFound;
+  const bool secFound = secOk && secondaryDict.lookup(lookupText.c_str(), secDef, secHead, &secResult);
+
+  std::string finalDefinition;
+  std::string finalHeadword;
+  bool finalHtml = false;
+  bool found = false;
+
+  if (primFound && secFound) {
+    found = true;
+    combineDefinitions(primDef, primHead, dict.definitionsAreHtml(), SETTINGS.dictionaryName,
+                       secDef, secHead, secondaryDict.definitionsAreHtml(), SETTINGS.secondaryDictionaryName,
+                       finalDefinition, finalHeadword, finalHtml);
+  } else if (primFound) {
+    found = true;
+    formatSingleDefinition(primDef, primHead, dict.definitionsAreHtml(),
+                           hasSecondary ? SETTINGS.dictionaryName : "",
+                           finalDefinition, finalHeadword, finalHtml);
+  } else if (secFound) {
+    found = true;
+    formatSingleDefinition(secDef, secHead, secondaryDict.definitionsAreHtml(),
+                           SETTINGS.secondaryDictionaryName,
+                           finalDefinition, finalHeadword, finalHtml);
+  }
 
   if (found) {
     {
@@ -66,12 +218,17 @@ void DictionaryWordSelectActivity::performLookup() {
       page.reset();
     }
     if (SETTINGS.vocabularyHistoryEnabled &&
-        !VocabularyStore::append(vocabulary, lookupText, headword, definition, dict.definitionsAreHtml())) {
+        !VocabularyStore::append(vocabulary, lookupText, finalHeadword, finalDefinition, finalHtml)) {
       LOG_ERR("VOCAB", "Could not save successful dictionary lookup");
     }
-    auto activity = makeUniqueNoThrow<DictionaryDefinitionActivity>(renderer, mappedInput, std::move(headword),
-                                                                    std::move(definition), dict.definitionsAreHtml());
-    if (!activity || !activity->enableLookup(dict, std::move(lookupText))) {
+    auto activity = makeUniqueNoThrow<DictionaryDefinitionActivity>(renderer, mappedInput, std::move(finalHeadword),
+                                                                    std::move(finalDefinition), finalHtml);
+    if (!activity || !activity->enableLookup(dict, std::move(lookupText),
+                                            hasSecondary ? &secondaryDict : nullptr,
+                                            SETTINGS.dictionaryName,
+                                            hasSecondary ? SETTINGS.secondaryDictionaryName : "",
+                                            dict.definitionsAreHtml(),
+                                            hasSecondary ? secondaryDict.definitionsAreHtml() : false)) {
       LOG_ERR("DICT", "OOM: definition activity");
       popup = Popup::Error;
       popupMsg = StrId::STR_DICT_LOW_MEMORY;
@@ -85,14 +242,17 @@ void DictionaryWordSelectActivity::performLookup() {
     });
     return;
   }
+
   // Name the failure: a genuine miss is "Not found"; a word that WAS found but
   // couldn't be read is a real error — and we distinguish decompression from a
   // low-memory allocation from a generic read error.
-  if (!ok) {
+  const bool hadError = (primConfigured && !ok && indexResult != Dictionary::IndexResult::Ok) ||
+                        (hasSecondary && !secOk && secIndexResult != Dictionary::IndexResult::Ok);
+  if (hadError) {
     popup = Popup::Error;
-    // An index build allocates a scan buffer, so it fails the same way lookups
-    // do on a fragmented heap — name that rather than a generic error.
-    switch (indexResult) {
+    const Dictionary::IndexResult errIdx =
+        (primConfigured && !ok && indexResult != Dictionary::IndexResult::Ok) ? indexResult : secIndexResult;
+    switch (errIdx) {
       case Dictionary::IndexResult::LowMemory:
         popupMsg = StrId::STR_DICT_LOW_MEMORY;
         break;
@@ -101,11 +261,15 @@ void DictionaryWordSelectActivity::performLookup() {
         break;
       case Dictionary::IndexResult::Ok:
       default:
-        popupMsg = StrId::STR_DICT_ERROR;  // dict.open() failed, not the index
+        popupMsg = StrId::STR_DICT_ERROR;
         break;
     }
+  } else if ((primConfigured && !ok) || (hasSecondary && !secOk && !primFound)) {
+    popup = Popup::Error;
+    popupMsg = StrId::STR_DICT_ERROR;
   } else {
-    switch (result) {
+    Dictionary::LookupResult errResult = (primResult != Dictionary::LookupResult::NotFound) ? primResult : secResult;
+    switch (errResult) {
       case Dictionary::LookupResult::Decompress:
         popup = Popup::Error;
         popupMsg = StrId::STR_DICT_DECOMPRESS_ERROR;
@@ -119,6 +283,7 @@ void DictionaryWordSelectActivity::performLookup() {
         popupMsg = StrId::STR_DICT_READ_FAILED;
         break;
       case Dictionary::LookupResult::NotFound:
+      case Dictionary::LookupResult::Found:
       default:
         popup = Popup::NotFound;
         popupMsg = StrId::STR_DICT_NOT_FOUND;

@@ -122,44 +122,47 @@ inline SettingInfo buildFontSizeSetting(const SdCardFontRegistry* registry) {
 }
 
 inline constexpr char DICTIONARY_SETTING_KEY[] = "dictionaryName";
+inline constexpr char SECONDARY_DICTIONARY_SETTING_KEY[] = "secondaryDictionaryName";
 
 // Build the dictionary selection setting dynamically from the folders discovered
 // under /dictionaries. "None" plus one option per dictionary; the selected folder
-// name persists in SETTINGS.dictionaryName (saved/loaded manually in
+// name persists in SETTINGS.dictionaryName / secondaryDictionaryName (saved/loaded manually in
 // CrossPointSettings::toJson/fromJson — the generic loop skips dynamic entries).
-inline SettingInfo buildDictionarySetting(const std::vector<DictionaryEntry>& dictionaries) {
+inline SettingInfo buildDictionarySetting(const std::vector<DictionaryEntry>& dictionaries, bool secondary = false) {
   std::vector<std::string> folderNames;
   folderNames.reserve(dictionaries.size());
   std::transform(dictionaries.begin(), dictionaries.end(), std::back_inserter(folderNames),
                  [](const DictionaryEntry& d) { return d.name; });
 
   SettingInfo s;
-  s.nameId = StrId::STR_DICTIONARY;
-  s.key = DICTIONARY_SETTING_KEY;  // web settings API; persisted by name, not by the generic loop
+  s.nameId = secondary ? StrId::STR_SECONDARY_DICTIONARY : StrId::STR_DICTIONARY;
+  s.key = secondary ? SECONDARY_DICTIONARY_SETTING_KEY : DICTIONARY_SETTING_KEY;  // web settings API; persisted by name, not by the generic loop
   s.type = SettingType::ENUM;
   s.enumStringValues.reserve(folderNames.size() + 1);
   s.enumStringValues.push_back(I18N.get(StrId::STR_NONE_OPT));
   s.enumStringValues.insert(s.enumStringValues.end(), folderNames.begin(), folderNames.end());
   s.category = StrId::STR_CAT_READER;
 
-  s.valueGetter = [folderNames]() -> uint8_t {
+  s.valueGetter = [folderNames, secondary]() -> uint8_t {
+    const char* settingName = secondary ? SETTINGS.secondaryDictionaryName : SETTINGS.dictionaryName;
     for (size_t i = 0; i < folderNames.size(); i++) {
       // Compare within the settings field capacity: an over-long folder name is
       // stored truncated, and must still match its list entry.
-      if (strncmp(folderNames[i].c_str(), SETTINGS.dictionaryName, sizeof(SETTINGS.dictionaryName) - 1) == 0) {
+      if (strncmp(folderNames[i].c_str(), settingName, sizeof(SETTINGS.dictionaryName) - 1) == 0) {
         return static_cast<uint8_t>(i + 1);
       }
     }
     return 0;  // "None", also when the stored folder no longer exists
   };
 
-  s.valueSetter = [folderNames](uint8_t v) {
+  s.valueSetter = [folderNames, secondary](uint8_t v) {
+    char* target = secondary ? SETTINGS.secondaryDictionaryName : SETTINGS.dictionaryName;
     if (v == 0 || v > folderNames.size()) {
-      SETTINGS.dictionaryName[0] = '\0';
+      target[0] = '\0';
       return;
     }
-    strncpy(SETTINGS.dictionaryName, folderNames[v - 1].c_str(), sizeof(SETTINGS.dictionaryName) - 1);
-    SETTINGS.dictionaryName[sizeof(SETTINGS.dictionaryName) - 1] = '\0';
+    strncpy(target, folderNames[v - 1].c_str(), sizeof(SETTINGS.dictionaryName) - 1);
+    target[sizeof(SETTINGS.dictionaryName) - 1] = '\0';
   };
 
   return s;
@@ -355,9 +358,14 @@ void forEachSetting(const SdCardFontRegistry* registry, const std::vector<Dictio
   bool dictionaryPending = dictionaries && !dictionaries->empty();
   const auto visitDictionary = [&] {
     dictionaryPending = false;
-    if (!wants(DICTIONARY_SETTING_KEY)) return;
-    SettingInfo s = buildDictionarySetting(*dictionaries);
-    visit(s);
+    if (wants(DICTIONARY_SETTING_KEY)) {
+      SettingInfo s = buildDictionarySetting(*dictionaries, false);
+      visit(s);
+    }
+    if (wants(SECONDARY_DICTIONARY_SETTING_KEY)) {
+      SettingInfo s = buildDictionarySetting(*dictionaries, true);
+      visit(s);
+    }
   };
   auto each = [&](SettingInfo& s) {
     if (isHiddenOnDevice(s)) return;
@@ -378,8 +386,8 @@ void forEachSetting(const SdCardFontRegistry* registry, const std::vector<Dictio
 inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* registry = nullptr,
                                                 const std::vector<DictionaryEntry>* dictionaries = nullptr) {
   std::vector<SettingInfo> v;
-  // Room for every base entry and the dictionary, so the list never reallocates.
-  v.reserve(countBaseSettings() + (dictionaries && !dictionaries->empty() ? 1 : 0));
+  // Room for every base entry and the dictionaries, so the list never reallocates.
+  v.reserve(countBaseSettings() + (dictionaries && !dictionaries->empty() ? 2 : 0));
   forEachSetting(
       registry, dictionaries, [](const char*) { return true; }, [&v](SettingInfo& s) { v.push_back(std::move(s)); });
   return v;

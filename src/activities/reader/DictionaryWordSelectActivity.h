@@ -48,6 +48,11 @@ class DictionaryWordSelectActivity final : public Activity {
   bool dictOpenOk = false;
   bool dictNeedsIndex = false;
 
+  Dictionary secondaryDict;
+  bool secondaryDictOpenAttempted = false;
+  bool secondaryDictOpenOk = false;
+  bool secondaryDictNeedsIndex = false;
+
   Popup popup = Popup::None;
   StrId popupMsg = StrId::STR_DICT_NOT_FOUND;
   unsigned long popupTime = 0;

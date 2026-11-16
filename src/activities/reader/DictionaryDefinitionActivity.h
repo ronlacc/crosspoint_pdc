@@ -26,7 +26,9 @@ class DictionaryDefinitionActivity final : public Activity {
         content{.headword = std::move(headword), .text = std::move(definition)},
         htmlDefinition(htmlDefinition) {}
 
-  bool enableLookup(Dictionary& dictionary, std::string&& query);
+  bool enableLookup(Dictionary& dictionary, std::string&& query, Dictionary* secondaryDictionary = nullptr,
+                    std::string primaryName = {}, std::string secondaryName = {},
+                    bool primaryIsHtml = false, bool secondaryIsHtml = false);
 
   void onEnter() override;
   void onExit() override;
@@ -82,8 +84,14 @@ class DictionaryDefinitionActivity final : public Activity {
   };
 
   struct LookupState {
-    explicit LookupState(Dictionary& dictionary) : dictionary(dictionary) {}
+    explicit LookupState(Dictionary& dictionary, Dictionary* secondaryDictionary = nullptr)
+        : dictionary(dictionary), secondaryDictionary(secondaryDictionary) {}
     Dictionary& dictionary;  // Owned by the retained DictionaryWordSelectActivity parent.
+    Dictionary* secondaryDictionary = nullptr;
+    std::string primaryName;
+    std::string secondaryName;
+    bool primaryIsHtml = false;
+    bool secondaryIsHtml = false;
     std::array<HistoryEntry, 16> history;
     size_t depth = 0;
     std::string query;
@@ -105,7 +113,7 @@ class DictionaryDefinitionActivity final : public Activity {
   void showMessage(StrId message);
 
   Definition content;
-  const bool htmlDefinition;
+  bool htmlDefinition = false;
   std::unique_ptr<LookupState> lookup;
   StrId message = StrId::STR_DICT_NOT_FOUND;
   unsigned long messageTime = 0;

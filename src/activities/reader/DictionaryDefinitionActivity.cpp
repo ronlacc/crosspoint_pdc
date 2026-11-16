@@ -42,6 +42,115 @@ constexpr size_t MAX_PLAIN_WORDS = (MAX_LINE_BYTES + 1) / 2;
 // path, which holds no per-page copies.
 constexpr size_t MAX_STYLED_HTML_BYTES = 16 * 1024;
 
+[[maybe_unused]] void escapeHtmlText(std::string& out, const char* in) {
+  if (!in) return;
+  for (const char* p = in; *p; ++p) {
+    switch (*p) {
+      case '&': out += "&amp;"; break;
+      case '<': out += "&lt;"; break;
+      case '>': out += "&gt;"; break;
+      case '"': out += "&quot;"; break;
+      default: out.push_back(*p); break;
+    }
+  }
+}
+
+[[maybe_unused]] void escapePlainTextToHtml(std::string& out, const std::string& in) {
+  for (char c : in) {
+    switch (c) {
+      case '\n': out += "<br/>"; break;
+      case '&': out += "&amp;"; break;
+      case '<': out += "&lt;"; break;
+      case '>': out += "&gt;"; break;
+      case '"': out += "&quot;"; break;
+      default: out.push_back(c); break;
+    }
+  }
+}
+
+[[maybe_unused]] void combineDefinitions(const std::string& primDef, const std::string& primHead, bool primHtml,
+                                         const char* primName, const std::string& secDef, const std::string& secHead,
+                                         bool secHtml, const char* secName, std::string& defOut, std::string& headOut,
+                                         bool& htmlOut) {
+  headOut = !primHead.empty() ? primHead : secHead;
+  htmlOut = primHtml || secHtml;
+  defOut.clear();
+  defOut.reserve(primDef.size() + secDef.size() + 256);
+
+  if (htmlOut) {
+    if (primName && primName[0]) {
+      defOut += "<h2>[";
+      escapeHtmlText(defOut, primName);
+      defOut += "]</h2>\n";
+    }
+    if (primHtml) {
+      defOut += primDef;
+    } else {
+      defOut += "<p>";
+      escapePlainTextToHtml(defOut, primDef);
+      defOut += "</p>";
+    }
+
+    defOut += "\n<hr/>\n";
+    if (secName && secName[0]) {
+      defOut += "<h2>[";
+      escapeHtmlText(defOut, secName);
+      defOut += "]</h2>\n";
+    }
+    if (secHtml) {
+      defOut += secDef;
+    } else {
+      defOut += "<p>";
+      escapePlainTextToHtml(defOut, secDef);
+      defOut += "</p>";
+    }
+  } else {
+    if (primName && primName[0]) {
+      defOut.push_back('\x01');
+      defOut += "[";
+      defOut += primName;
+      defOut += "]\n";
+    }
+    defOut += primDef;
+
+    defOut += "\n\n";
+
+    if (secName && secName[0]) {
+      defOut.push_back('\x01');
+      defOut += "[";
+      defOut += secName;
+      defOut += "]\n";
+    }
+    defOut += secDef;
+  }
+}
+
+[[maybe_unused]] void formatSingleDefinition(const std::string& def, const std::string& head, bool isHtml,
+                                             const char* name, std::string& defOut, std::string& headOut,
+                                             bool& htmlOut) {
+  headOut = head;
+  htmlOut = isHtml;
+  defOut.clear();
+  if (name && name[0] != '\0') {
+    if (isHtml) {
+      defOut.reserve(def.size() + 128);
+      defOut += "<h2>[";
+      escapeHtmlText(defOut, name);
+      defOut += "]</h2>\n";
+      defOut += def;
+    } else {
+      defOut.reserve(def.size() + 64);
+      defOut.push_back('\x01');
+      defOut += "[";
+      defOut += name;
+      defOut += "]\n";
+      defOut += def;
+    }
+  } else {
+    defOut = def;
+  }
+}
+
 }  // namespace
 
 // Heap-owned only while preparing plain selection pages; keep the loop task's stack small.
@@ -124,10 +233,19 @@ struct DictionaryDefinitionActivity::PlainSelectionLine {
 };
 
 // cppcheck-suppress constParameterReference // the lookup state holds the dictionary by non-const reference
-bool DictionaryDefinitionActivity::enableLookup(Dictionary& dictionary, std::string&& query) {
-  lookup = makeUniqueNoThrow<LookupState>(dictionary);
+bool DictionaryDefinitionActivity::enableLookup(Dictionary& dictionary, std::string&& query,
+                                                Dictionary* secondaryDictionary,
+                                                std::string primaryName, std::string secondaryName,
+                                                bool primaryIsHtml, bool secondaryIsHtml) {
+  lookup = makeUniqueNoThrow<LookupState>(dictionary, secondaryDictionary);
   if (!lookup) LOG_ERR("DICT", "OOM: lookup history (%u bytes)", static_cast<unsigned>(sizeof(LookupState)));
-  if (lookup) lookup->query = std::move(query);
+  if (lookup) {
+    lookup->query = std::move(query);
+    lookup->primaryName = std::move(primaryName);
+    lookup->secondaryName = std::move(secondaryName);
+    lookup->primaryIsHtml = primaryIsHtml;
+    lookup->secondaryIsHtml = secondaryIsHtml;
+  }
   return lookup != nullptr;
 }
 
@@ -382,8 +500,42 @@ void DictionaryDefinitionActivity::showMessage(const StrId nextMessage) {
 bool DictionaryDefinitionActivity::restoreCurrentDefinition(const bool styled) {
   const int page = content.currentPage;
   auto result = Dictionary::LookupResult::Found;
-  if (!lookup->dictionary.lookup(lookup->query.c_str(), content.text, content.headword, &result) ||
-      !prepareDefinition(content, !styled) || styled != !content.pages.empty() || page >= content.totalPages) {
+  bool nextIsHtml = false;
+  bool found = false;
+  if (!lookup->secondaryDictionary) {
+    found = lookup->dictionary.lookup(lookup->query.c_str(), content.text, content.headword, &result);
+    nextIsHtml = htmlDefinition;
+  } else {
+    std::string primText, primHead;
+    auto primResult = Dictionary::LookupResult::Found;
+    const bool primFound = lookup->dictionary.lookup(lookup->query.c_str(), primText, primHead, &primResult);
+    const bool primHtml = lookup->primaryIsHtml;
+
+    std::string secText, secHead;
+    auto secResult = Dictionary::LookupResult::Found;
+    const bool secFound = lookup->secondaryDictionary->lookup(lookup->query.c_str(), secText, secHead, &secResult);
+    const bool secHtml = lookup->secondaryIsHtml;
+
+    if (primFound && secFound) {
+      found = true;
+      combineDefinitions(primText, primHead, primHtml, lookup->primaryName.c_str(),
+                         secText, secHead, secHtml, lookup->secondaryName.c_str(),
+                         content.text, content.headword, nextIsHtml);
+    } else if (primFound) {
+      found = true;
+      formatSingleDefinition(primText, primHead, primHtml, lookup->primaryName.c_str(),
+                             content.text, content.headword, nextIsHtml);
+    } else if (secFound) {
+      found = true;
+      formatSingleDefinition(secText, secHead, secHtml, lookup->secondaryName.c_str(),
+                             content.text, content.headword, nextIsHtml);
+    } else {
+      found = false;
+      result = (primResult != Dictionary::LookupResult::NotFound) ? primResult : secResult;
+    }
+  }
+  htmlDefinition = nextIsHtml;
+  if (!found || !prepareDefinition(content, !styled) || styled != !content.pages.empty() || page >= content.totalPages) {
     LOG_ERR("DICT", "Cannot recover current definition after failed lookup");
     finish();
     return false;
@@ -413,7 +565,40 @@ void DictionaryDefinitionActivity::navigateDefinition(const bool back) {
   Definition next;
   auto result = Dictionary::LookupResult::Found;
   const char* word = back ? lookup->history[lookup->depth - 1].query.c_str() : lookup->pendingWord.c_str();
-  const bool found = lookup->dictionary.lookup(word, next.text, next.headword, &result);
+  bool nextIsHtml = false;
+  bool found = false;
+  if (!lookup->secondaryDictionary) {
+    found = lookup->dictionary.lookup(word, next.text, next.headword, &result);
+    nextIsHtml = htmlDefinition;
+  } else {
+    std::string primText, primHead;
+    auto primResult = Dictionary::LookupResult::Found;
+    const bool primFound = lookup->dictionary.lookup(word, primText, primHead, &primResult);
+    const bool primHtml = lookup->primaryIsHtml;
+
+    std::string secText, secHead;
+    auto secResult = Dictionary::LookupResult::Found;
+    const bool secFound = lookup->secondaryDictionary->lookup(word, secText, secHead, &secResult);
+    const bool secHtml = lookup->secondaryIsHtml;
+
+    if (primFound && secFound) {
+      found = true;
+      combineDefinitions(primText, primHead, primHtml, lookup->primaryName.c_str(),
+                         secText, secHead, secHtml, lookup->secondaryName.c_str(),
+                         next.text, next.headword, nextIsHtml);
+    } else if (primFound) {
+      found = true;
+      formatSingleDefinition(primText, primHead, primHtml, lookup->primaryName.c_str(),
+                             next.text, next.headword, nextIsHtml);
+    } else if (secFound) {
+      found = true;
+      formatSingleDefinition(secText, secHead, secHtml, lookup->secondaryName.c_str(),
+                             next.text, next.headword, nextIsHtml);
+    } else {
+      found = false;
+      result = (primResult != Dictionary::LookupResult::NotFound) ? primResult : secResult;
+    }
+  }
   const auto recover = [this, back, styled, &next](const StrId error) {
     lookup->pendingWord.clear();
     next.releasePayload();
@@ -444,6 +629,7 @@ void DictionaryDefinitionActivity::navigateDefinition(const bool back) {
     }
     return;
   }
+  htmlDefinition = nextIsHtml;
   const bool forcePlain = back && !lookup->history[lookup->depth - 1].styled;
   if (!prepareDefinition(next, forcePlain)) {
     recover(StrId::STR_DICT_LOW_MEMORY);
