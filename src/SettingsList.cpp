@@ -130,6 +130,8 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
   emit(SettingInfo::Enum(StrId::STR_READER_MENU_STYLE, &CrossPointSettings::readerMenuStyle,
                          {StrId::STR_MENU_STYLE_LIST, StrId::STR_MENU_STYLE_TOOLBAR}, "readerMenuStyle",
                          StrId::STR_CAT_READER));
+  emit(SettingInfo::Toggle(StrId::STR_IMMEDIATE_LOOKUP, &CrossPointSettings::immediateLookupEnabled,
+                           "immediateLookupEnabled", StrId::STR_CAT_READER));
   emit(SettingInfo::Toggle(StrId::STR_SAVE_VOCABULARY_LOOKUPS, &CrossPointSettings::vocabularyHistoryEnabled,
                            "vocabularyHistoryEnabled", StrId::STR_CAT_READER));
   // --- Controls ---

@@ -327,6 +327,9 @@ inline bool isHiddenOnDevice(const SettingInfo& s) {
     // power click (other touch boards) cover these shortcuts.
     case StrId::STR_LONG_PRESS_MENU:
       return BoardConfig::hasTouch();
+    // Hidden on button boards: tap-and-hold word selection is a touch gesture.
+    case StrId::STR_IMMEDIATE_LOOKUP:
+      return !BoardConfig::hasTouch();
     default:
       return false;
   }
@@ -361,9 +364,16 @@ void forEachSetting(const SdCardFontRegistry* registry, const std::vector<Dictio
   };
   auto each = [&](SettingInfo& s) {
     if (isHiddenOnDevice(s)) return;
-    if (s.valuePtr == &CrossPointSettings::vocabularyHistoryEnabled) {
+    if (s.valuePtr == &CrossPointSettings::immediateLookupEnabled) {
       if (!dictionaryPending) return;
       visitDictionary();
+    }
+    if (s.valuePtr == &CrossPointSettings::vocabularyHistoryEnabled) {
+      if (dictionaryPending) {
+        visitDictionary();
+      } else if (!dictionaries || dictionaries->empty()) {
+        return;
+      }
     }
     if (dictionaryPending && s.category == StrId::STR_CAT_CONTROLS) visitDictionary();
     if (!wants(s.key)) return;
