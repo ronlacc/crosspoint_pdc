@@ -119,6 +119,10 @@ void ClipSelectionActivity::onEnter() {
     }
     selected = rangeStart = hit;
     ignoreInitialTouch = true;
+    if (SETTINGS.immediateLookupEnabled && lookupAvailable && mode == Mode::Clip) {
+      confirmSelection(ClippingResult::Action::Lookup);
+      return;
+    }
   }
   requestUpdate();
 }

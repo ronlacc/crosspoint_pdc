@@ -46,6 +46,8 @@ Two ways to start a lookup while reading:
 
 **On touchscreen devices:**
 
+- Tap and hold a word to bring up the selection menu (**Look Up**, **Clip**, or **Bookmark**).
+- When **Settings → Reader → Immediate Lookup** is enabled, tapping and holding a word immediately opens its dictionary definition without showing the action menu.
 - Tap or drag the selection handles across words to highlight a word or phrase, then tap **Look Up**.
 
 On the very first lookup with a dictionary (and again whenever the `.idx` or `.syn` source file changes), the reader shows *"Indexing dictionary…"* while it builds small sidecar files next to them — a `.qidx` for the word index, and a `.sidx` when a `.syn` synonym file is present. Each sidecar is rebuilt independently, only when its own source changes. This takes a few seconds for large dictionaries and makes all subsequent lookups fast. The sidecars can be deleted safely at any time — they will simply be rebuilt.
