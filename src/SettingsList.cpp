@@ -165,6 +165,10 @@ void forEachBaseSetting(SettingVisitor visit, void* context) {
                            {StrId::STR_TAP_AND_SWIPE, StrId::STR_TAP_ONLY, StrId::STR_SWIPE_ONLY,
                             StrId::STR_INVERTED_TAP, StrId::STR_DISABLED},
                            "previousPageGesture", StrId::STR_CAT_CONTROLS));
+    emit(SettingInfo::Enum(StrId::STR_BOOKMARK_CORNER_TAP, &CrossPointSettings::bookmarkCornerTap,
+                           {StrId::STR_DISABLED, StrId::STR_TOP_LEFT, StrId::STR_TOP_RIGHT, StrId::STR_BOTTOM_LEFT,
+                            StrId::STR_BOTTOM_RIGHT},
+                           "bookmarkCornerTap", StrId::STR_CAT_CONTROLS));
   }
   // The reader-menu gesture choice only makes sense where the menu stays
   // reachable without the tap and the bottom edge is free (the capacitive

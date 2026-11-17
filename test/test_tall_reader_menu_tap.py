@@ -78,6 +78,7 @@ inline bool gestureAllowsTap(uint8_t g) {
 inline bool gestureAllowsSwipe(uint8_t g) {
   return g == CrossPointSettings::TAP_AND_SWIPE || g == CrossPointSettings::SWIPE_ONLY;
 }
+inline bool isBookmarkCornerTap(const GfxRenderer&, const MappedInputManager&) { return false; }
 
 """ + prod_code + r"""
 

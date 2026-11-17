@@ -106,6 +106,31 @@ inline bool isInTouchMenuTapZone(const GfxRenderer& renderer, const int x) {
   return x >= zoneWidth && x < width - zoneWidth;
 }
 
+constexpr int BOOKMARK_CORNER_TAP_SIZE_PX = 100;
+
+inline bool isBookmarkCornerTap(const GfxRenderer& renderer, const MappedInputManager& input) {
+  if (!SETTINGS.touchReaderControls || !input.hasTouch()) return false;
+  if (SETTINGS.bookmarkCornerTap == CrossPointSettings::BOOKMARK_CORNER_DISABLED) return false;
+  int x = 0;
+  int y = 0;
+  if (!input.wasScreenTapped(x, y)) return false;
+  const int width = renderer.getScreenWidth();
+  const int height = renderer.getScreenHeight();
+  if (x < 0 || x >= width || y < 0 || y >= height) return false;
+  switch (SETTINGS.bookmarkCornerTap) {
+    case CrossPointSettings::BOOKMARK_CORNER_TOP_LEFT:
+      return x < BOOKMARK_CORNER_TAP_SIZE_PX && y < BOOKMARK_CORNER_TAP_SIZE_PX;
+    case CrossPointSettings::BOOKMARK_CORNER_TOP_RIGHT:
+      return x >= width - BOOKMARK_CORNER_TAP_SIZE_PX && y < BOOKMARK_CORNER_TAP_SIZE_PX;
+    case CrossPointSettings::BOOKMARK_CORNER_BOTTOM_LEFT:
+      return x < BOOKMARK_CORNER_TAP_SIZE_PX && y >= height - BOOKMARK_CORNER_TAP_SIZE_PX;
+    case CrossPointSettings::BOOKMARK_CORNER_BOTTOM_RIGHT:
+      return x >= width - BOOKMARK_CORNER_TAP_SIZE_PX && y >= height - BOOKMARK_CORNER_TAP_SIZE_PX;
+    default:
+      return false;
+  }
+}
+
 inline TouchPageTurn detectTouchPageTurn(const GfxRenderer& renderer, const MappedInputManager& input,
                                          const bool rtlBook = false, const bool reserveReaderMenuTap = true) {
   TouchPageTurn result{false, false, 0};
@@ -136,7 +161,10 @@ inline TouchPageTurn detectTouchPageTurn(const GfxRenderer& renderer, const Mapp
   }
 
   const int width = renderer.getScreenWidth();
-  // Reserve the middle-column reader-menu tap target when this view has a menu.
+  // Reserve the middle-column reader-menu tap target and bookmark corner when this view has a menu.
+  if (reserveReaderMenuTap && isBookmarkCornerTap(renderer, input)) {
+    return result;
+  }
   if (reserveReaderMenuTap && SETTINGS.showReaderMenu == CrossPointSettings::READER_MENU_TAP &&
       isInTouchMenuTapZone(renderer, x)) {
     return result;

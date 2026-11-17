@@ -247,6 +247,16 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // "tapForReaderMenu" key: 0/1 keep their old Off/Tap meaning.
   enum SHOW_READER_MENU { READER_MENU_OFF = 0, READER_MENU_TAP = 1, READER_MENU_SWIPE_UP = 2, SHOW_READER_MENU_COUNT };
 
+  // Corner tap target that toggles a bookmark while reading on touch boards.
+  enum BOOKMARK_CORNER_TAP : uint8_t {
+    BOOKMARK_CORNER_DISABLED = 0,
+    BOOKMARK_CORNER_TOP_LEFT = 1,
+    BOOKMARK_CORNER_TOP_RIGHT = 2,
+    BOOKMARK_CORNER_BOTTOM_LEFT = 3,
+    BOOKMARK_CORNER_BOTTOM_RIGHT = 4,
+    BOOKMARK_CORNER_COUNT
+  };
+
   enum QUICK_RESUME_SLEEP_SCREEN {
     QUICK_RESUME_NEVER = 0,
     QUICK_RESUME_AFTER_TIMEOUT = 1,
@@ -416,6 +426,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // up-swipe). Only surfaced on home-key boards, where Home is the capacitive
   // key and the bottom edge is free; elsewhere it stays at the Tap default.
   uint8_t showReaderMenu = READER_MENU_TAP;
+  // Corner tap that toggles a bookmark while reading (BOOKMARK_CORNER_TAP).
+  uint8_t bookmarkCornerTap = BOOKMARK_CORNER_DISABLED;
   // Frontlight quick-panel state. Category-less SettingsList entries persist
   // these without adding them to the regular Settings screen.
   uint8_t frontlightBrightness = 60;

@@ -1004,6 +1004,17 @@ void EpubReaderActivity::loop() {
     }
   }
 
+  if (!atEndOfBook && !endOfBookMenuOpen && ReaderUtils::isBookmarkCornerTap(renderer, mappedInput)) {
+    haptic_feedback::touchAction();
+    if (!showBookmarkMessage) {
+      addBookmark();
+      showBookmarkMessage = true;
+      bookmarkMessageTime = millis();
+      requestUpdate();
+    }
+    return;
+  }
+
   const bool touchMenu = ReaderUtils::isTouchMenuGesture(renderer, mappedInput);
   if (confirmReleased || touchMenu) {
     if (touchMenu) haptic_feedback::touchAction();

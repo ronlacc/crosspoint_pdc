@@ -681,3 +681,8 @@ STR_TAPS_AND_GESTURES: "Taps and gestures"
 STR_PAGE_TURN_LONG_PRESS: "Page turn long press"
 
 STR_POWER_DOUBLE_CLICK: "Double click"
+STR_BOOKMARK_CORNER_TAP: "Tap Corner to Bookmark"
+STR_TOP_LEFT: "Top left"
+STR_TOP_RIGHT: "Top right"
+STR_BOTTOM_LEFT: "Bottom left"
+STR_BOTTOM_RIGHT: "Bottom right"
